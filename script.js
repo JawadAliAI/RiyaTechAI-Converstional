@@ -26,6 +26,11 @@ function initSpeechRecognition() {
             document.getElementById('voiceBtn').classList.add('recording');
             document.getElementById('voiceInputBtn').classList.add('active');
             updateVoiceStatus('🎤 Listening... Speak now');
+            
+            // Stop any ongoing speech when user starts speaking
+            if (isSpeaking) {
+                stopSpeaking();
+            }
         };
 
         recognition.onresult = function(event) {
@@ -45,7 +50,14 @@ function initSpeechRecognition() {
 
         recognition.onerror = function(event) {
             console.error('Speech recognition error:', event.error);
-            updateVoiceStatus('❌ Error: ' + event.error, 'error');
+            
+            // Don't show error for 'aborted' or 'no-speech' in continuous mode
+            if (continuousMode && (event.error === 'aborted' || event.error === 'no-speech')) {
+                console.log('Speech recognition ended normally');
+            } else {
+                updateVoiceStatus('❌ Error: ' + event.error, 'error');
+            }
+            
             stopRecording();
             
             // Restart listening in continuous mode if it wasn't a user abort
@@ -78,6 +90,12 @@ function initSpeechRecognition() {
 function startListening() {
     if (!recognition) {
         initSpeechRecognition();
+    }
+    
+    // Don't start listening if AI is currently speaking
+    if (isSpeaking) {
+        console.log('Waiting for AI to finish speaking...');
+        return;
     }
     
     if (!isRecording) {
@@ -135,6 +153,12 @@ function speakText(text) {
     if (isSpeaking) {
         window.speechSynthesis.cancel();
     }
+    
+    // Stop voice recognition while AI is speaking to prevent feedback loop
+    if (isRecording) {
+        recognition.stop();
+        updateVoiceStatus('🔇 Voice input paused while AI speaks...');
+    }
 
     let cleanText = text
         .replace(/🩺|💡|💊|🥗|⚠️|⚠|📅|🎯|📊|🛡️|🏃|👤/g, '')
@@ -165,6 +189,7 @@ function speakText(text) {
 
     currentUtterance.onstart = function() {
         isSpeaking = true;
+        updateVoiceStatus('🔊 AI is speaking... Voice input paused');
     };
 
     currentUtterance.onend = function() {
@@ -174,9 +199,12 @@ function speakText(text) {
         if (continuousMode) {
             setTimeout(() => {
                 if (continuousMode && !isRecording) {
+                    updateVoiceStatus('🎤 Ready to listen again...');
                     startListening();
                 }
-            }, 500);
+            }, 800); // Slightly longer delay to ensure clean transition
+        } else {
+            hideVoiceStatus();
         }
     };
 
@@ -185,6 +213,13 @@ function speakText(text) {
         isSpeaking = false;
         if (event.error !== 'interrupted') {
             showNotification('Speech error: ' + event.error, 'error');
+        }
+        
+        // Resume listening in continuous mode even if there was an error
+        if (continuousMode && !isRecording) {
+            setTimeout(() => {
+                startListening();
+            }, 1000);
         }
     };
 
@@ -222,8 +257,16 @@ function toggleContinuousMode() {
     if (continuousMode) {
         btn.classList.add('active');
         btn.innerHTML = '<span class="voice-indicator recording"></span><span>🔄 Continuous: ON</span>';
-        autoSpeak = true;
-        toggleAutoSpeak(); // Enable auto-speak
+        
+        // Enable auto-speak if not already enabled
+        if (!autoSpeak) {
+            autoSpeak = true;
+            const indicator = document.getElementById('speakIndicator');
+            const text = document.getElementById('autoSpeakText');
+            indicator.style.background = '#4CAF50';
+            text.textContent = '🔊 Auto-Speak: ON';
+        }
+        
         showNotification('Continuous conversation mode enabled! Speak naturally.', 'success');
         startListening();
     } else {
@@ -233,6 +276,7 @@ function toggleContinuousMode() {
         if (isRecording) {
             recognition.stop();
         }
+        stopSpeaking();
     }
 }
 
