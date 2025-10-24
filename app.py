@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import google.generativeai as genai
@@ -17,9 +17,9 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.pdfgen import canvas
 
-# Configure Gemini API
-os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# Configure Gemini API - Use environment variable for security
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyAfiOtseUQnbzkFZEeDXtZYyOvtlvZYCms")
+genai.configure(api_key=GOOGLE_API_KEY)
 
 MODEL_ID = "gemini-2.0-flash-exp"
 
@@ -30,7 +30,7 @@ STORAGE_DIR.mkdir(exist_ok=True)
 PDF_DIR = Path("consultation_pdfs")
 PDF_DIR.mkdir(exist_ok=True)
 
-# System prompt (same as before)
+# System prompt
 DOCTOR_SYSTEM_PROMPT = """
 You are Dr. HealBot, a calm, knowledgeable, and empathetic virtual doctor.
 
@@ -97,18 +97,13 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
     pdf_filename = f"{session_id}_summary.pdf"
     pdf_path = PDF_DIR / pdf_filename
     
-    # Create PDF document
     doc = SimpleDocTemplate(str(pdf_path), pagesize=letter,
                            rightMargin=72, leftMargin=72,
                            topMargin=72, bottomMargin=18)
     
-    # Container for the 'Flowable' objects
     elements = []
-    
-    # Define styles
     styles = getSampleStyleSheet()
     
-    # Custom styles
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -138,14 +133,9 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
         leading=14
     )
     
-    # Add Title
     elements.append(Paragraph("🩺 AI DOCTOR CONSULTATION SUMMARY", title_style))
     elements.append(Spacer(1, 0.3*inch))
     
-    # Add horizontal line
-    elements.append(Spacer(1, 0.1*inch))
-    
-    # Patient Information Table
     patient_info_data = [
         ['Patient Name:', patient_data.get('name', 'N/A')],
         ['Age:', patient_data.get('age', 'N/A')],
@@ -169,15 +159,11 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
     
     elements.append(patient_table)
     elements.append(Spacer(1, 0.3*inch))
-    
-    # Add Consultation Summary
     elements.append(Paragraph("CONSULTATION SUMMARY", heading_style))
     
-    # Process summary text - split by lines and convert to paragraphs
     summary_lines = summary_text.split('\n')
     for line in summary_lines:
         if line.strip():
-            # Replace emojis with text equivalents for PDF compatibility
             line = line.replace('🩺', '[Medical] ')
             line = line.replace('💡', '[Insight] ')
             line = line.replace('💊', '[Medicine] ')
@@ -187,15 +173,12 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
             line = line.replace('📅', '[Follow-up] ')
             line = line.replace('━', '-')
             
-            # Check if it's a heading (starts with **)
             if line.strip().startswith('**') and line.strip().endswith('**'):
                 elements.append(Paragraph(line.strip('*'), heading_style))
             else:
                 elements.append(Paragraph(line, normal_style))
     
     elements.append(Spacer(1, 0.3*inch))
-    
-    # Add Conversation History
     elements.append(PageBreak())
     elements.append(Paragraph("CONVERSATION HISTORY", heading_style))
     elements.append(Spacer(1, 0.2*inch))
@@ -220,7 +203,6 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
         elements.append(Paragraph(content, normal_style))
         elements.append(Spacer(1, 0.15*inch))
     
-    # Add disclaimer at the end
     elements.append(Spacer(1, 0.3*inch))
     
     disclaimer_style = ParagraphStyle(
@@ -244,13 +226,11 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
         disclaimer_style
     ))
     
-    # Build PDF
     doc.build(elements)
-    
     return pdf_filename
 
 # =====================================================
-# STORAGE FUNCTIONS (same as before)
+# STORAGE FUNCTIONS
 # =====================================================
 
 def save_session_to_json(session_id: str, memory: 'ConversationMemory'):
@@ -303,7 +283,7 @@ def list_all_sessions() -> List[Dict]:
     return sorted(sessions_list, key=lambda x: x["last_updated"], reverse=True)
 
 # =====================================================
-# MEMORY MANAGEMENT (same as before)
+# MEMORY MANAGEMENT
 # =====================================================
 
 class ConversationMemory:
@@ -419,7 +399,7 @@ def cleanup_old_sessions():
 # =====================================================
 
 app = FastAPI(
-    title="AI Doctor Consultation API with PDF Generation",
+    title="AI Doctor Consultation API",
     description="Professional medical consultation API with PDF summary generation",
     version="3.0.0"
 )
@@ -460,11 +440,45 @@ class HealthCheck(BaseModel):
     stored_pdfs: int
 
 # =====================================================
+# SERVE FRONTEND FILES
+# =====================================================
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """Serve the frontend HTML"""
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(
+            content="<h1>Frontend not found. Please ensure index.html exists.</h1>",
+            status_code=404
+        )
+
+@app.get("/styles.css", response_class=HTMLResponse)
+async def serve_css():
+    """Serve the CSS file"""
+    try:
+        with open("styles.css", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), media_type="text/css")
+    except FileNotFoundError:
+        return HTMLResponse(content="/* CSS not found */", status_code=404, media_type="text/css")
+
+@app.get("/script.js", response_class=HTMLResponse)
+async def serve_js():
+    """Serve the JavaScript file"""
+    try:
+        with open("script.js", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), media_type="application/javascript")
+    except FileNotFoundError:
+        return HTMLResponse(content="// JS not found", status_code=404, media_type="application/javascript")
+
+# =====================================================
 # API ENDPOINTS
 # =====================================================
 
-@app.get("/", response_model=HealthCheck)
-async def root():
+@app.get("/health", response_model=HealthCheck)
+async def health_check():
     """Health check endpoint"""
     cleanup_old_sessions()
     stored_count = len(list(STORAGE_DIR.glob("*.json")))
@@ -543,145 +557,7 @@ async def generate_summary(request: SessionRequest):
     else:
         memory = sessions[request.session_id]
     
-    summary_request = """Please generate a COMPREHENSIVE and DETAILED medical consultation summary based on our entire conversation. Make it thorough and professional:
-
-📋 **COMPREHENSIVE MEDICAL CONSULTATION SUMMARY**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**PATIENT INFORMATION:**
-- Full Name: [Patient's name]
-- Age: [Patient's age if mentioned]
-- Gender: [If mentioned]
-- Consultation Date: [Current date and time]
-- Session Duration: [Approximate]
-- Current Medications: [List all mentioned]
-- Known Allergies: [If mentioned]
-
-**CHIEF COMPLAINTS & SYMPTOMS:**
-[Provide a detailed description of ALL symptoms mentioned, including:]
-- Primary symptom and severity
-- Duration of each symptom
-- Onset and progression
-- Associated symptoms
-- Aggravating and relieving factors
-- Impact on daily activities
-
-**DETAILED MEDICAL HISTORY:**
-[Include everything discussed:]
-- Current medications and dosages
-- Past medical conditions
-- Recent illnesses or infections
-- Family medical history (if mentioned)
-- Lifestyle factors (sleep, stress, diet)
-- Recent travel or exposures
-
-**CLINICAL ASSESSMENT:**
-[Provide detailed analysis:]
-- Most likely diagnosis with explanation
-- Differential diagnoses (2-3 possibilities)
-- Reasoning behind each possibility
-- Risk factors present
-- Severity assessment
-
-**COMPREHENSIVE TREATMENT PLAN:**
-
-1. **IMMEDIATE CARE RECOMMENDATIONS:**
-   - What to do in the next 24-48 hours
-   - Symptom management strategies
-   - Warning signs to watch for
-
-2. **MEDICATION RECOMMENDATIONS:**
-   - Primary medications (generic names, dosages, frequency, duration)
-   - Alternative options if first choice unavailable
-   - Potential side effects to monitor
-   - Drug interactions to avoid
-   - When to take each medication (with/without food)
-   - Important: Check with pharmacist for exact dosing
-
-3. **DETAILED DIETARY RECOMMENDATIONS:**
-   - Foods to eat (specific examples and portions)
-   - Foods to avoid completely
-   - Meal timing and frequency
-   - Hydration guidelines (specific amounts)
-   - Nutritional supplements if needed
-   - Sample meal plan for recovery
-
-4. **LIFESTYLE MODIFICATIONS:**
-   - Sleep recommendations (hours, timing, environment)
-   - Rest and activity balance
-   - Stress management techniques
-   - Environmental modifications
-   - Work/school attendance guidance
-   - Specific activities to avoid
-
-5. **HOME CARE REMEDIES:**
-   - Natural remedies that may help
-   - Temperature management techniques
-   - Pain relief methods
-   - Steam inhalation or other therapies
-   - Specific home treatments for symptoms
-
-6. **EXERCISE & PHYSICAL ACTIVITY:**
-   - Current activity restrictions
-   - Safe exercises during recovery
-   - When to resume normal activities
-   - Gradual activity progression plan
-   - Post-recovery exercise recommendations
-
-7. **PREVENTIVE MEASURES:**
-   - How to prevent recurrence
-   - Hygiene practices
-   - Vaccination recommendations
-   - Family/household precautions
-   - Long-term health maintenance
-
-8. **MONITORING PLAN:**
-   - Symptoms to track daily
-   - How to measure improvement
-   - When improvement should be expected
-   - What to document for doctor visit
-
-**CRITICAL WARNING SIGNS - SEEK IMMEDIATE MEDICAL ATTENTION IF:**
-[List 5-7 specific warning signs that require emergency care:]
-- [Specific symptom with threshold]
-- [Specific symptom with threshold]
-- [Continue with detailed warnings]
-
-**FOLLOW-UP CARE PLAN:**
-- Timeline for self-care (e.g., "Monitor for 48 hours")
-- When to schedule doctor appointment (specific timeframe)
-- What information to bring to doctor
-- Specialist referral recommendations if needed
-- Follow-up testing that may be needed
-
-**PROGNOSIS & EXPECTED RECOVERY:**
-- Expected recovery timeline
-- What to expect during recovery process
-- Signs of improvement to look for
-- Long-term outlook
-
-**ADDITIONAL RESOURCES:**
-- Reputable health information sources
-- Support resources if applicable
-- Emergency contact information reminder
-
-**PATIENT EDUCATION:**
-- Understanding your condition
-- How the body fights this illness
-- Why specific recommendations are important
-- Common misconceptions about this condition
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ **CRITICAL DISCLAIMER** ⚠️
-This is a preliminary AI-generated consultation for informational and educational purposes ONLY. 
-This is NOT a substitute for professional medical advice, diagnosis, or treatment.
-This AI cannot examine you physically, run laboratory tests, or make definitive diagnoses.
-ALWAYS seek the advice of a qualified, licensed healthcare provider with any questions regarding a medical condition.
-Never disregard professional medical advice or delay seeking it because of this AI consultation.
-In case of emergency, call your local emergency services immediately.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Please make this summary as detailed, professional, and helpful as possible. Include specific, actionable advice."""
+    summary_request = """Please generate a comprehensive medical consultation summary based on our conversation. Include patient information, symptoms, assessment, treatment recommendations, and warnings."""
     
     try:
         model = genai.GenerativeModel(
@@ -693,7 +569,6 @@ Please make this summary as detailed, professional, and helpful as possible. Inc
         response = chat.send_message(summary_request)
         summary_text = response.text
         
-        # Generate PDF
         pdf_filename = generate_pdf_summary(
             request.session_id,
             summary_text,
@@ -701,7 +576,6 @@ Please make this summary as detailed, professional, and helpful as possible. Inc
             memory.history
         )
         
-        # Save PDF filename to memory
         memory.pdf_filename = pdf_filename
         save_session_to_json(request.session_id, memory)
         
@@ -718,7 +592,6 @@ Please make this summary as detailed, professional, and helpful as possible. Inc
 @app.get("/download-pdf/{session_id}")
 async def download_pdf(session_id: str):
     """Download PDF summary for a session"""
-    # Check if session exists
     if session_id in sessions:
         memory = sessions[session_id]
     else:
@@ -728,7 +601,7 @@ async def download_pdf(session_id: str):
         memory = ConversationMemory.from_json(session_data)
     
     if not memory.pdf_filename:
-        raise HTTPException(status_code=404, detail="PDF not generated yet. Please generate summary first.")
+        raise HTTPException(status_code=404, detail="PDF not generated yet")
     
     pdf_path = PDF_DIR / memory.pdf_filename
     
@@ -736,7 +609,7 @@ async def download_pdf(session_id: str):
         raise HTTPException(status_code=404, detail="PDF file not found")
     
     patient_name = memory.patient_data.get('name', 'Patient')
-    download_filename = f"Consultation_Summary_{patient_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    download_filename = f"Consultation_{patient_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
     
     return FileResponse(
         path=str(pdf_path),
@@ -744,111 +617,12 @@ async def download_pdf(session_id: str):
         filename=download_filename
     )
 
-@app.get("/load-session/{session_id}")
-async def load_session(session_id: str):
-    """Load a previous consultation session by ID"""
-    if session_id in sessions:
-        memory = sessions[session_id]
-        return {
-            "session_id": session_id,
-            "loaded": True,
-            "from_cache": True,
-            "history": memory.history,
-            "patient_data": memory.patient_data,
-            "created_at": memory.created_at.isoformat(),
-            "questions_asked": memory.questions_asked,
-            "has_pdf": memory.pdf_filename is not None,
-            "pdf_url": f"/download-pdf/{session_id}" if memory.pdf_filename else None
-        }
-    
-    session_data = load_session_from_json(session_id)
-    
-    if not session_data:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-    
-    memory = ConversationMemory.from_json(session_data)
-    sessions[session_id] = memory
-    
-    return {
-        "session_id": session_id,
-        "loaded": True,
-        "from_cache": False,
-        "history": memory.history,
-        "patient_data": memory.patient_data,
-        "created_at": memory.created_at.isoformat(),
-        "questions_asked": memory.questions_asked,
-        "has_pdf": memory.pdf_filename is not None,
-        "pdf_url": f"/download-pdf/{session_id}" if memory.pdf_filename else None,
-        "message": "Session loaded successfully. You can continue the conversation."
-    }
-
 @app.get("/all-sessions")
 async def get_all_sessions():
     """Get list of all stored consultation sessions"""
     return {
         "total_sessions": len(list(STORAGE_DIR.glob("*.json"))),
         "sessions": list_all_sessions()
-    }
-
-@app.post("/restart-session")
-async def restart_session(request: SessionRequest):
-    """Restart a consultation session"""
-    if request.session_id in sessions:
-        del sessions[request.session_id]
-    
-    sessions[request.session_id] = ConversationMemory(max_messages=20, session_id=request.session_id)
-    
-    initial_message = "Consultation restarted. Hello! I'm Dr. AI Assistant. May I have your name please?"
-    sessions[request.session_id].add_message("assistant", initial_message)
-    
-    return {
-        "session_id": request.session_id,
-        "message": initial_message,
-        "timestamp": datetime.now().isoformat()
-    }
-
-@app.delete("/session/{session_id}")
-async def delete_session(session_id: str):
-    """Delete a consultation session (from memory, JSON, and PDF)"""
-    if session_id in sessions:
-        memory = sessions[session_id]
-        pdf_filename = memory.pdf_filename
-        del sessions[session_id]
-    else:
-        session_data = load_session_from_json(session_id)
-        pdf_filename = session_data.get('pdf_filename') if session_data else None
-    
-    # Remove JSON file
-    file_path = STORAGE_DIR / f"{session_id}.json"
-    if file_path.exists():
-        file_path.unlink()
-    
-    # Remove PDF file if exists
-    if pdf_filename:
-        pdf_path = PDF_DIR / pdf_filename
-        if pdf_path.exists():
-            pdf_path.unlink()
-    
-    return {"message": "Session and associated files deleted successfully"}
-
-@app.get("/session/{session_id}/history")
-async def get_session_history(session_id: str):
-    """Get conversation history for a session"""
-    if session_id in sessions:
-        memory = sessions[session_id]
-    else:
-        session_data = load_session_from_json(session_id)
-        if not session_data:
-            raise HTTPException(status_code=404, detail="Session not found")
-        memory = ConversationMemory.from_json(session_data)
-    
-    return {
-        "session_id": session_id,
-        "history": memory.history,
-        "patient_data": memory.patient_data,
-        "created_at": memory.created_at.isoformat(),
-        "questions_asked": memory.questions_asked,
-        "has_pdf": memory.pdf_filename is not None
     }
 
 @app.get("/active-sessions")
@@ -872,4 +646,5 @@ async def get_active_sessions():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
