@@ -17,14 +17,11 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.pdfgen import canvas
 
-from openai import OpenAI
-import os
+# Configure Gemini API
+os.environ["GOOGLE_API_KEY"] = "AIzaSyAfiOtseUQnbzkFZEeDXtZYyOvtlvZYCms"
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Configure GPT API
-os.environ["OPENAI_API_KEY"] = "your_openai_api_key_here"
-client = OpenAI()
-MODEL_ID = "gpt-4o-mini"  # You can change to gpt-4o or gpt-4o-mini
-
+MODEL_ID = "gemini-2.0-flash-exp"
 
 # Create storage directories
 STORAGE_DIR = Path("consultation_storage")
@@ -906,4 +903,3 @@ async def get_active_sessions():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
