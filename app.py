@@ -116,6 +116,23 @@ CONVERSATION FLOW:
 5. Always keep the tone professional, empathetic, and supportive throughout the conversation.
 
 """
+# =====================================================
+# HELPER FUNCTIONS
+# =====================================================
+
+def convert_markdown_to_html(text: str) -> str:
+    """Convert markdown formatting to HTML for ReportLab Paragraph rendering"""
+    
+    # Convert **bold** to <b>bold</b>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    
+    # Convert *italic* to <i>italic</i> (but not ** which is already handled)
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
+    
+    # Convert bullet points - to •
+    text = re.sub(r'^- ', '• ', text, flags=re.MULTILINE)
+    
+    return text
 
 # =====================================================
 # PDF GENERATION FUNCTIONS
@@ -208,7 +225,6 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
     elements.append(Spacer(1, 0.2*inch))
     
     # Add a decorative line
-    from reportlab.platypus import HRFlowable
     elements.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#2563eb')))
     elements.append(Spacer(1, 0.2*inch))
     
@@ -254,6 +270,9 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
         if not line or line in ['━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '--------------------------------------------']:
             continue
         
+        # CONVERT MARKDOWN TO HTML FIRST (This fixes the ** issue!)
+        line = convert_markdown_to_html(line)
+        
         # Replace emojis with styled text
         emoji_replacements = {
             '🩺': '',
@@ -270,19 +289,19 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
         for emoji, replacement in emoji_replacements.items():
             line = line.replace(emoji, replacement)
         
-        # Detect section headers (text between ** or text followed by :)
-        if line.startswith('**') and line.endswith('**'):
-            # Main section header
-            section_title = line.strip('*').strip()
+        # Detect section headers
+        if line.startswith('<b>') and line.endswith('</b>'):
+            # Main section header (already bold from markdown conversion)
+            section_title = line.replace('<b>', '').replace('</b>', '').strip()
             if section_title.isupper() or len(section_title.split()) <= 6:
                 elements.append(Spacer(1, 0.15*inch))
-                elements.append(Paragraph(section_title, subheading_style))
+                elements.append(Paragraph(line, subheading_style))
                 current_section = section_title
             else:
-                elements.append(Paragraph(f"<b>{section_title}</b>", normal_style))
+                elements.append(Paragraph(line, normal_style))
         
-        elif line.endswith(':') and len(line.split()) <= 8:
-            # Subheading (ends with colon)
+        elif line.endswith(':') and len(line.split()) <= 8 and '<b>' not in line:
+            # Subheading (ends with colon) - make it bold if not already
             elements.append(Spacer(1, 0.08*inch))
             elements.append(Paragraph(f"<b>{line}</b>", normal_style))
         
@@ -336,8 +355,10 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
         
         elements.append(Paragraph(f"{role} - {formatted_time}", role_style))
         
-        # Clean message content
+        # Clean message content and convert markdown
         content = msg['content']
+        content = convert_markdown_to_html(content)
+        
         for emoji in ['🩺', '💡', '💊', '🥗', '🏠', '⚠️', '⚠', '📅', '🎯']:
             content = content.replace(emoji, '')
         
@@ -821,5 +842,6 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
