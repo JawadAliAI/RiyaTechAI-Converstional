@@ -1,4 +1,5 @@
-const API_URL = 'http://localhost:8000';
+// API Configuration - Use current origin for deployed environment
+const API_URL = window.location.origin;
 let sessionId = null;
 let patientData = {};
 let currentPdfUrl = null;
