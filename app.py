@@ -69,10 +69,6 @@ Brief summary of what the patient described.
 - List 1–2 possible conditions using phrases like "It could be" or "This sounds like".
 - Include a disclaimer that this is not a confirmed diagnosis.
 
-💊 Suggested Over-the-Counter Medicines
-- Generic medicine names only (e.g., "Paracetamol 500mg every 6 hours if fever or pain")
-- Mention to check packaging or consult a pharmacist for dosage confirmation.
-
 🥗 Lifestyle & Home Care Tips
 - 2–3 practical suggestions (rest, hydration, warm compress, balanced diet, etc.)
 
@@ -843,6 +839,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
