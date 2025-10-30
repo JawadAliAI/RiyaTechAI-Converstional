@@ -13,7 +13,7 @@ from pathlib import Path
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, HRFlowable
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.pdfgen import canvas
@@ -52,7 +52,7 @@ CONVERSATION LOGIC:
 - Stop asking once enough information is collected for a basic assessment.
 - Then, provide a structured, friendly, and visually clear medical response using headings, emojis, and bullet points.
 
-- Automatically detect if the user is asking a **general medical question** (e.g., “What is diabetes?”, “How does blood pressure work?”, “Explain antibiotics”).
+- Automatically detect if the user is asking a **general medical question** (e.g., "What is diabetes?", "How does blood pressure work?", "Explain antibiotics").
     - In such cases, switch to **Instructor Mode**:
         - Give a clear, educational, and structured explanation.
         - Use short paragraphs or bullet points.
@@ -95,12 +95,12 @@ IMPORTANT:
 CONVERSATION FLOW:
 1. Begin by asking the purpose of the visit:
    
-2. Depending on the user’s response, choose the appropriate path:
+2. Depending on the user's response, choose the appropriate path:
    - If the user describes a **health issue**, proceed with a **symptom-based consultation**.
    - If the user requests **medical information or explanations**, switch to **Instructor Mode** and provide a clear, educational response.
 
 3. For Symptom-Based Consultation:
-   a. Ask about the **main symptom** (e.g., “Can you describe your main concern?”)  
+   a. Ask about the **main symptom** (e.g., "Can you describe your main concern?")  
    b. Ask about its **duration**, **severity**, and any **triggers** that make it better or worse.  
    c. Ask about any **accompanying symptoms** (e.g., fever, nausea, fatigue, etc.).  
    d. Ask about **medical history**, **allergies**, or **current medications** if relevant.  
@@ -420,6 +420,7 @@ def generate_pdf_summary(session_id: str, summary_text: str, patient_data: Dict,
     doc.build(elements)
     
     return pdf_filename
+
 # =====================================================
 # STORAGE FUNCTIONS
 # =====================================================
@@ -781,8 +782,8 @@ async def generate_summary(request: SessionRequest):
         raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
 
 @app.get("/download-pdf/{session_id}")
-async def download_pdf(session_id: str):
-    """Download PDF summary for a session"""
+async def download_pdf(session_id: str, download: bool = False):
+    """Download or view PDF summary for a session"""
     if session_id in sessions:
         memory = sessions[session_id]
     else:
@@ -802,11 +803,21 @@ async def download_pdf(session_id: str):
     patient_name = memory.patient_data.get('name', 'Patient')
     download_filename = f"Consultation_{patient_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
     
-    return FileResponse(
-        path=str(pdf_path),
-        media_type='application/pdf',
-        filename=download_filename
-    )
+    # If download parameter is True, force download. Otherwise, allow inline viewing
+    if download:
+        return FileResponse(
+            path=str(pdf_path),
+            media_type='application/pdf',
+            filename=download_filename,
+            headers={"Content-Disposition": f"attachment; filename={download_filename}"}
+        )
+    else:
+        return FileResponse(
+            path=str(pdf_path),
+            media_type='application/pdf',
+            filename=download_filename,
+            headers={"Content-Disposition": f"inline; filename={download_filename}"}
+        )
 
 @app.get("/all-sessions")
 async def get_all_sessions():
@@ -814,6 +825,31 @@ async def get_all_sessions():
     return {
         "total_sessions": len(list(STORAGE_DIR.glob("*.json"))),
         "sessions": list_all_sessions()
+    }
+
+@app.get("/load-session/{session_id}")
+async def load_session(session_id: str):
+    """Load a specific session by ID"""
+    # First check if session is in active memory
+    if session_id in sessions:
+        memory = sessions[session_id]
+    else:
+        # Try to load from storage
+        session_data = load_session_from_json(session_id)
+        if not session_data:
+            raise HTTPException(status_code=404, detail="Session not found")
+        memory = ConversationMemory.from_json(session_data)
+        # Add to active sessions
+        sessions[session_id] = memory
+    
+    return {
+        "session_id": session_id,
+        "history": memory.history,
+        "patient_data": memory.patient_data,
+        "questions_asked": memory.questions_asked,
+        "message_count": len(memory.history),
+        "has_pdf": memory.pdf_filename is not None,
+        "pdf_url": f"/download-pdf/{session_id}" if memory.pdf_filename else None
     }
 
 @app.get("/active-sessions")
@@ -839,10 +875,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
-
-
-
