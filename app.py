@@ -19,7 +19,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.pdfgen import canvas
 
 # Configure Gemini API - Use environment variable for security
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyDjawAgk87Im-8BwKqYTbYy5Dko39pgV1w")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyAo8pgpGDFSrNM4O0mpNlokpPjKO2Z3vkg")
 genai.configure(api_key=GOOGLE_API_KEY)
 
 MODEL_ID = "gemini-2.0-flash-exp"
@@ -875,4 +875,5 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
