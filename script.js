@@ -450,9 +450,11 @@ function downloadPDF() {
         return;
     }
 
+    // Add ?download=true to force download instead of viewing
+    const downloadUrl = currentPdfUrl + '?download=true';
     const link = document.createElement('a');
-    link.href = currentPdfUrl;
-    link.download = `Consultation_Summary_${sessionId.substring(0, 8)}.pdf`;
+    link.href = downloadUrl;
+    link.target = '_blank';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -465,13 +467,20 @@ function togglePDFViewer() {
     const viewer = document.getElementById('pdfViewer');
     const btn = document.getElementById('viewPdfBtn');
     
-    if (viewerContainer.style.display === 'none') {
+    if (viewerContainer.style.display === 'none' || !viewerContainer.style.display) {
+        if (!currentPdfUrl) {
+            showNotification('No PDF available to view', 'error');
+            return;
+        }
+        // Don't add download parameter for viewing
         viewer.src = currentPdfUrl;
         viewerContainer.style.display = 'block';
         btn.textContent = '🙈 Hide PDF';
+        showNotification('Loading PDF preview...', 'info');
     } else {
         viewerContainer.style.display = 'none';
         btn.textContent = '👁️ View PDF';
+        viewer.src = '';
     }
 }
 
@@ -551,23 +560,30 @@ async function loadSession(id) {
 
         const data = await response.json();
         
+        // Stop any ongoing speech
         stopSpeaking();
         
+        // Clear chat
         document.getElementById('chatContainer').innerHTML = '';
         
+        // Update session info
         sessionId = data.session_id;
         patientData = data.patient_data;
         updateSessionInfo();
 
+        // Load all messages
         data.history.forEach(msg => {
             addMessage(msg.role === 'user' ? 'user' : 'doctor', msg.content);
         });
 
+        // Set PDF URL if available
         if (data.has_pdf && data.pdf_url) {
             currentPdfUrl = `${API_URL}${data.pdf_url}`;
+            showNotification('Consultation loaded successfully! PDF is available.', 'success');
+        } else {
+            currentPdfUrl = null;
+            showNotification('Consultation loaded successfully!', 'success');
         }
-
-        showNotification('Consultation loaded successfully!', 'success');
     } catch (error) {
         console.error('Error loading session:', error);
         showNotification('Failed to load session. Check the ID and try again.', 'error');
